@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Gravar a placa ESP32</title>
+<style>
+body{font:16px system-ui,sans-serif;max-width:640px;margin:2rem auto;padding:0 1rem}
+@media(prefers-color-scheme:dark){body{background:#111;color:#eee}a{color:#8ab4f8}}
+</style>
+<script type="module" src="https://unpkg.com/esp-web-tools@10.1.1/dist/web/install-button.js?module"></script>
+</head>
+<body>
+<h1>Passo 1: gravar a placa</h1>
+<p>Use Chrome ou Edge no computador. Plugue a placa ESP32 por um cabo USB de dados, clique no botão abaixo, escolha a porta da placa e aguarde terminar.</p>
+<p><esp-web-install-button manifest="manifest.json"></esp-web-install-button></p>
+<p>Se travar em "Connecting", segure o botão BOOT da placa quando a gravação começar e solte quando o progresso andar.</p>
+<p>Esta gravação substitui o programa que estiver na placa. Se ela tinha algo importante, não continue.</p>
+<h2>Passo 2: coletar</h2>
+<p>Com a gravação concluída, siga para a <a href="index.html">página de coleta</a>.</p>
+</body>
+</html>

@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Coletor de entropia ESP32</title>
+<style>
+body{font:16px system-ui,sans-serif;max-width:640px;margin:2rem auto;padding:0 1rem}
+button{font:inherit;padding:.7rem 1.4rem;cursor:pointer}
+pre{background:#eee;padding:1rem;white-space:pre-wrap}
+@media(prefers-color-scheme:dark){body{background:#111;color:#eee}pre{background:#222}}
+</style>
+</head>
+<body>
+<h1>Coletor de entropia ESP32</h1>
+<p>Obrigado por ajudar neste experimento. Ele mede o "ruído" natural de uma placa ESP32 comum, para saber se serve como fonte de aleatoriedade em dispositivos baratos.</p>
+<h2>Como participar</h2>
+<ol>
+<li>Use Chrome ou Edge no computador (não funciona em celular nem em Firefox).</li>
+<li>Com a placa já gravada com o firmware do experimento, plugue-a por um cabo USB de dados. Não ligue nada no pino 36 (VP).</li>
+<li>Marque a caixa abaixo, clique em Coletar e escolha a porta da placa.</li>
+<li>Aguarde (alguns minutos) e permita downloads múltiplos se o navegador pedir. Não feche a aba.</li>
+<li>Repita em 3 momentos: logo depois de ligar a placa, cerca de 1 hora depois, e à noite. Deixe o computador sem entrar em repouso.</li>
+</ol>
+<h2>O que é enviado</h2>
+<p>Leituras brutas dos sensores internos do chip, o modelo, a temperatura e o horário da coleta. A identificação da placa é guardada apenas como um código embaralhado (o endereço real da placa não é enviado). Nenhum dado pessoal e nenhuma informação do seu computador é coletada. Os dados serão usados na análise deste experimento sobre qualidade de aleatoriedade. A participação é voluntária e você pode parar a qualquer momento.</p>
+<label><input type="checkbox" id="ok"> Li e concordo em participar e em enviar esses dados.</label>
+<p><button id="go" disabled>Coletar</button></p>
+<pre id="log"></pre>
+<script>
+const UPLOAD_URL = "https://script.google.com/macros/s/AKfycbxjHD2KDqEwmM_scxuyJ6JRNOp-cqOZ_6rF-aTXB38kQaYR541T_RWp_HaJ1jkBzPa8/exec"; // URL do Apps Script (receptor_drive.gs); vazio = so baixa os arquivos
+const AMOSTRAS = 4;    // amostras de 128 KiB por canal em cada sessao
+const $ = id => document.getElementById(id);
+const log = m => { $('log').textContent += m + "\n"; };
+const toHex = b => [...new Uint8Array(b)].map(x => x.toString(16).padStart(2, '0')).join('');
+const hex2u8 = h => Uint8Array.from(h.match(/../g) || [], x => parseInt(x, 16));
+const sha = async u8 => toHex(await crypto.subtle.digest('SHA-256', u8));
+
+$('ok').onchange = () => { $('go').disabled = !$('ok').checked; };
+$('go').onclick = async () => {
+  $('log').textContent = '';
+  if (!('serial' in navigator)) { log('Use Chrome ou Edge (Web Serial).'); return; }
+  let port, w, rd;
+  try {
+    port = await navigator.serial.requestPort();
+    await port.open({ baudRate: 921600 });
+    const enc = new TextEncoder();
+    w = port.writable.getWriter();
+    rd = port.readable.pipeThrough(new TextDecoderStream()).getReader();
+    const dog = setTimeout(() => rd.cancel(), 3600000);
+    let buf = '', meta = null, ch = null, sent = false, chans = {};
+    const lidas = [];
+    while (lidas.length < AMOSTRAS) {
+      const { value, done } = await rd.read();
+      if (done) throw new Error('Porta fechada ou tempo esgotado');
+      buf += value;
+      let i;
+      while ((i = buf.indexOf('\n')) >= 0) {
+        const l = buf.slice(0, i).trim();
+        buf = buf.slice(i + 1);
+        if (l.endsWith('READY') && !sent) { sent = true; await w.write(enc.encode('S\n')); log('Amostra ' + (lidas.length + 1) + ' de ' + AMOSTRAS + '...'); }
+        else if (l.startsWith('META ')) meta = JSON.parse(l.slice(5));
+        else if (l.startsWith('CH ')) { const [, n, b] = l.split(' '); ch = chans[n] = { bytes: +b, hex: '', sha: null }; }
+        else if (l.startsWith('SHA ') && ch) { ch.sha = l.slice(4); ch = null; }
+        else if (l === 'END') { lidas.push({ meta, chans }); meta = null; chans = {}; ch = null; sent = false; }
+        else if (ch && /^[0-9a-f]+$/.test(l)) ch.hex += l;
+      }
+    }
+    clearTimeout(dog);
+
+    const id = (await sha(enc.encode(lidas[0].meta.mac))).slice(0, 12);
+    const agora = new Date();
+    let hist = [];
+    try { hist = JSON.parse(localStorage.getItem('ec:' + id) || '[]'); } catch {}
+    hist.push(agora.toISOString());
+    try { localStorage.setItem('ec:' + id, JSON.stringify(hist)); } catch {}
+    const sessao = hist.length;
+
+    for (let k = 0; k < lidas.length; k++) {
+      const { meta: m, chans: cs } = lidas[k];
+      delete m.mac;
+      const integ = {}; let ok = true;
+      for (const [n, c] of Object.entries(cs)) {
+        const lenOk = c.hex.length === c.bytes * 2;
+        const calc = lenOk ? await sha(hex2u8(c.hex)) : '';
+        const good = lenOk && calc === c.sha;
+        ok = ok && good;
+        integ[n] = { bytes: c.bytes, tamanho_ok: lenOk, sha_declarado: c.sha, sha_calculado: calc, ok: good };
+      }
+      const pkg = {
+        proto: 'ENTROPYCOLLECT/1', device_id: id, captura: sessao, amostra: k + 1,
+        capturado_em: agora.toISOString(),
+        segundos_desde_primeira_sessao: (agora - new Date(hist[0])) / 1000,
+        integridade_ok: ok, meta: m, integridade: integ,
+        dados_hex: Object.fromEntries(Object.entries(cs).map(([n, c]) => [n, c.hex]))
+      };
+      const json = JSON.stringify(pkg);
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(new Blob([json], { type: 'application/json' }));
+      a.download = 'ec_' + id + '_s' + sessao + '_a' + (k + 1) + '.json';
+      a.click();
+      log('Amostra ' + (k + 1) + ': ' + (ok ? 'integra' : 'FALHOU') + ' | ' + a.download);
+      if (UPLOAD_URL) {
+        try { await fetch(UPLOAD_URL, { method: 'POST', mode: 'no-cors', body: json }); log('  enviado'); }
+        catch { log('  ENVIO FALHOU (o arquivo foi baixado; guarde-o)'); }
+      }
+    }
+    log('Sessao ' + sessao + ' concluida. Sessao 1: placa recem-ligada; sessao 2: cerca de 1 h depois; sessao 3: a noite.');
+  } catch (e) {
+    log('Erro: ' + e.message);
+  } finally {
+    try { await rd.cancel(); } catch {}
+    try { w.releaseLock(); await port.close(); } catch {}
+  }
+};
+</script>
+</body>
+</html>
