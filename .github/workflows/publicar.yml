@@ -1,0 +1,68 @@
+name: Compilar e publicar
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  compilar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: arduino/setup-arduino-cli@v2
+
+      - name: Instalar suporte ao ESP32
+        run: |
+          arduino-cli config init
+          arduino-cli config add board_manager.additional_urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
+          arduino-cli core update-index
+          arduino-cli core install esp32:esp32@2.0.17
+
+      - name: Compilar o firmware
+        run: |
+          arduino-cli compile --fqbn esp32:esp32:esp32 --output-dir build firmware/ENTROPYCOLLECT_ESP32
+          ls -l build
+
+      - name: Montar o site
+        run: |
+          mkdir -p public
+          cp -r site/* public/
+          cp build/ENTROPYCOLLECT_ESP32.ino.merged.bin public/firmware.bin
+          cat > public/manifest.json <<'JSON'
+          {
+            "name": "Coletor de entropia ESP32",
+            "version": "1",
+            "new_install_prompt_erase": false,
+            "builds": [
+              {
+                "chipFamily": "ESP32",
+                "parts": [ { "path": "firmware.bin", "offset": 0 } ]
+              }
+            ]
+          }
+          JSON
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: public
+
+  publicar:
+    needs: compilar
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - id: deploy
+        uses: actions/deploy-pages@v4
