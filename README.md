@@ -5,4 +5,4 @@ Experimento para coleta de entropia em dispositivos ESP32 com Wi-Fi e Bluetooth 
 
 - `firmware/` codigo gravado na placa (Arduino-ESP32).
 - `site/` paginas de gravacao (gravar.html) e de coleta (index.html).
-- A compilacao e a publicacao sao automaticas (`.github/workflows/publicar.yml`).
+- A compilacao e a publicacao sao automaticas (.github/workflows/publicar.yml).
