@@ -38,7 +38,21 @@ jobs:
         run: |
           mkdir -p public
           cp -r site/* public/
-          cp build/ENTROPYCOLLECT_ESP32.ino.merged.bin public/firmware.bin
+          MERGED=$(find build -name '*.merged.bin' | head -n1)
+          if [ -n "$MERGED" ]; then
+            cp "$MERGED" public/firmware.bin
+          else
+            echo "merged.bin nao encontrado; montando com esptool"
+            pip install esptool==4.8.1
+            BOOT=$(find "$HOME/.arduino15" -name boot_app0.bin | head -n1)
+            python -m esptool --chip esp32 merge_bin -o public/firmware.bin \
+              --flash_mode dio --flash_freq 40m --flash_size 4MB \
+              0x1000 build/ENTROPYCOLLECT_ESP32.ino.bootloader.bin \
+              0x8000 build/ENTROPYCOLLECT_ESP32.ino.partitions.bin \
+              0xe000 "$BOOT" \
+              0x10000 build/ENTROPYCOLLECT_ESP32.ino.bin
+          fi
+          ls -l public
           cat > public/manifest.json <<'JSON'
           {
             "name": "Coletor de entropia ESP32",
