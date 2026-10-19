@@ -7,26 +7,47 @@
 <style>
 body{font:16px system-ui,sans-serif;max-width:640px;margin:2rem auto;padding:0 1rem}
 button{font:inherit;padding:.7rem 1.4rem;cursor:pointer}
+button:disabled{cursor:not-allowed}
 pre{background:#eee;padding:1rem;white-space:pre-wrap}
-@media(prefers-color-scheme:dark){body{background:#111;color:#eee}pre{background:#222}}
+[hidden]{display:none!important}
+@media(prefers-color-scheme:dark){body{background:#111;color:#eee}pre{background:#222}a{color:#8ab4f8}}
 </style>
+<script type="module" src="https://unpkg.com/esp-web-tools@10.1.1/dist/web/install-button.js?module"></script>
 </head>
 <body>
+
+<section id="etapa1">
 <h1>Coletor de entropia ESP32</h1>
-<p>Obrigado por ajudar neste experimento. Ele mede o "ruído" natural de uma placa ESP32 comum, com WI-FI e BLUETOOH desabilitados, para saber se a entropia gerada tem qualidade suficiente e aleatoriedade para o experimento.</p>
+<p>Obrigado por ajudar neste experimento. Ele mede o "ruído" natural de uma placa ESP32 comum, com Wi-Fi e Bluetooth desabilitados, para saber se a entropia gerada tem qualidade suficiente e aleatoriedade para o experimento.</p>
 <h2>Como participar</h2>
 <ol>
 <li>Use Chrome ou Edge no computador (não funciona em celular nem em Firefox).</li>
-<li>Com a placa já gravada com o firmware do experimento, plugue-a por um cabo USB de dados. Não ligue nada no pino 36 (VP).</li>
-<li>Marque a caixa abaixo, clique em Coletar e escolha a porta da placa.</li>
+<li>Plugue a placa por um cabo USB de dados. Não ligue nada no pino 36 (VP). A própria página grava na placa o programa do experimento.</li>
+<li>Marque a caixa abaixo e clique em Concordar e continuar. Na etapa seguinte, grave a placa e depois clique em Coletar e escolha a porta da placa.</li>
 <li>Aguarde (alguns minutos) e permita downloads múltiplos se o navegador pedir. Não feche a aba.</li>
-<li>Repita em 3 momentos: logo depois de ligar a placa, cerca de 1 hora depois, e à noite. Deixe o computador sem entrar em repouso.</li>
+<li>Repita a coleta em 3 momentos: logo depois de ligar a placa, cerca de 1 hora depois, e à noite. Deixe o computador sem entrar em repouso.</li>
 </ol>
 <h2>O que é enviado</h2>
-<p>Leituras brutas dos sensores internos do chip, o modelo, a temperatura e o horário da coleta. A identificação da placa é guardada apenas como um código embaralhado (o endereço real da placa não é enviado). Nenhum dado pessoal e nenhuma informação do dispositivo utilizado é coletada. Os dados serão usados na análise de pesquisa. A participação é voluntária e você pode parar a qualquer momento.</p>
-<label><input type="checkbox" id="ok"> Li e concordo em participar e em enviar esses dados.</label>
-<p><button id="go" disabled>Coletar</button></p>
+<p>Leituras brutas dos sensores internos do chip, o modelo, a temperatura e o horário da coleta. A identificação da placa é guardada apenas como um código embaralhado (o endereço real da placa não é enviado). Nenhum dado pessoal e nenhuma informação do computador utilizado é coletada. Os dados serão usados na análise de pesquisa. A participação é voluntária e você pode parar a qualquer momento.</p>
+<p><label><input type="checkbox" id="ok"> Li e concordo em participar e em enviar esses dados.</label></p>
+<p><button id="continuar" disabled>Concordar e continuar</button></p>
+</section>
+
+<section id="etapa2" hidden>
+<h1>Gravar e coletar</h1>
+<h2>Passo 1: gravar a placa</h2>
+<p>Plugue a placa ESP32 por um cabo USB de dados, clique no botão abaixo, escolha a porta da placa e aguarde terminar. Esta gravação substitui o programa que estiver na placa; se ela tinha algo importante, não continue. Se travar em "Connecting", segure o botão BOOT da placa quando a gravação começar e solte quando o progresso andar. Se a placa já foi gravada antes, pule para o passo 2.</p>
+<p><esp-web-install-button manifest="manifest.json">
+<button slot="activate">Gravar a placa</button>
+<span slot="unsupported">Este navegador não consegue gravar a placa. Use Chrome ou Edge no computador.</span>
+<span slot="not-allowed">A gravação exige uma conexão segura (https).</span>
+</esp-web-install-button></p>
+<h2>Passo 2: coletar</h2>
+<p>Com a placa gravada, clique em Coletar e escolha a porta da placa. Aguarde as 4 amostras.</p>
+<p><button id="go">Coletar</button></p>
 <pre id="log"></pre>
+</section>
+
 <script>
 const UPLOAD_URL = "https://script.google.com/macros/s/AKfycbxjHD2KDqEwmM_scxuyJ6JRNOp-cqOZ_6rF-aTXB38kQaYR541T_RWp_HaJ1jkBzPa8/exec"; // URL do Apps Script (receptor_drive.gs); vazio = so baixa os arquivos
 const AMOSTRAS = 4;    // amostras de 128 KiB por canal em cada sessao
@@ -36,7 +57,17 @@ const toHex = b => [...new Uint8Array(b)].map(x => x.toString(16).padStart(2, '0
 const hex2u8 = h => Uint8Array.from(h.match(/../g) || [], x => parseInt(x, 16));
 const sha = async u8 => toHex(await crypto.subtle.digest('SHA-256', u8));
 
-$('ok').onchange = () => { $('go').disabled = !$('ok').checked; };
+const mostrarEtapa2 = () => {
+  $('etapa1').hidden = true;
+  $('etapa2').hidden = false;
+  window.scrollTo(0, 0);
+};
+try { if (localStorage.getItem('ec:aceite')) mostrarEtapa2(); } catch {}
+$('ok').onchange = () => { $('continuar').disabled = !$('ok').checked; };
+$('continuar').onclick = () => {
+  try { localStorage.setItem('ec:aceite', new Date().toISOString()); } catch {}
+  mostrarEtapa2();
+};
 $('go').onclick = async () => {
   $('log').textContent = '';
   if (!('serial' in navigator)) { log('Use Chrome ou Edge (Web Serial).'); return; }
