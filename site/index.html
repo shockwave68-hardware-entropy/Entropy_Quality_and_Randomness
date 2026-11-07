@@ -46,6 +46,7 @@ pre{background:#eee;padding:1rem;white-space:pre-wrap}
 <p><small>Se a sua placa não aparecer na lista, o computador pode precisar do driver do chip USB (CP2102 ou CH340, está escrito na placa). A janela que abrir mostra os links de download, em inglês: "Windows" e "Mac" indicam o seu sistema, e depois de instalar basta clicar em "Try Again". Se a janela disser "No port selected", é porque nenhuma porta foi escolhida.</small></p>
 <h2>Passo 2: coletar</h2>
 <p>Com a placa gravada, clique em Coletar e escolha a porta da placa. A coleta das 4 amostras leva cerca de 10 a 15 minutos e é normal parecer parada por vários minutos. Não feche a aba, não desligue o computador e não deixe ele entrar em suspensão ou hibernação enquanto a coleta não terminar. Se a placa não for reconhecida, tente outra porta USB (algumas placas só funcionam em portas USB 3.0).</p>
+<p><label>Momento desta coleta: <select id="momento"><option value="placa_fria">Placa recém-ligada (fria)</option><option value="1h_depois">Cerca de 1 hora depois</option><option value="noite">À noite</option><option value="outro">Outro</option></select></label></p>
 <p id="status"></p>
 <p><button id="go">Coletar</button></p>
 <pre id="log"></pre>
@@ -110,6 +111,8 @@ $('go').onclick = async () => {
     hist.push(agora.toISOString());
     try { localStorage.setItem('ec:' + id, JSON.stringify(hist)); } catch {}
     const sessao = hist.length;
+    const momentoValor = $('momento').value;
+    const momentoTexto = $('momento').selectedOptions[0].text;
 
     for (let k = 0; k < lidas.length; k++) {
       const { meta: m, chans: cs } = lidas[k];
@@ -123,7 +126,7 @@ $('go').onclick = async () => {
         integ[n] = { bytes: c.bytes, tamanho_ok: lenOk, sha_declarado: c.sha, sha_calculado: calc, ok: good };
       }
       const pkg = {
-        proto: 'ENTROPYCOLLECT/1', device_id: id, captura: sessao, amostra: k + 1,
+        proto: 'ENTROPYCOLLECT/1', device_id: id, captura: sessao, amostra: k + 1, momento: momentoValor,
         capturado_em: agora.toISOString(),
         segundos_desde_primeira_sessao: (agora - new Date(hist[0])) / 1000,
         integridade_ok: ok, meta: m, integridade: integ,
@@ -140,7 +143,7 @@ $('go').onclick = async () => {
         catch { log('  ENVIO FALHOU (o arquivo foi baixado; guarde-o)'); }
       }
     }
-    log('Sessao ' + sessao + ' concluida. Sessao 1: placa recem-ligada; sessao 2: cerca de 1 h depois; sessao 3: a noite.');
+    log('Coleta numero ' + sessao + ' desta placa concluida (momento informado: ' + momentoTexto + '). O numero e so um contador e aparece no nome dos arquivos (s' + sessao + ').');
   } catch (e) {
     log('Erro: ' + e.message);
   } finally {
