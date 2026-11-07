@@ -1,3 +1,4 @@
+// Escrito com auxilio de IA (Claude, da Anthropic), a partir da ideia e dos requisitos do organizador do experimento, que revisou e adotou o resultado.
 // ENTROPYCOLLECT/1 - firmware para ESP32 classico (Arduino-ESP32).
 // Wi-Fi e Bluetooth nunca sao iniciados. Nenhum hash/mistura nos dados:
 // cada fonte sai BRUTA e em canal separado. SHA-256 serve so p/ integridade do USB.
@@ -113,7 +114,7 @@ void coleta() {
   Serial.println("END");
 }
 
-void setup() { Serial.begin(921600); }
+void setup() { Serial.begin(460800); }
 
 void loop() {
   Serial.println("ENTROPYCOLLECT/1 READY");
