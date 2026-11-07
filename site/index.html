@@ -25,8 +25,8 @@ pre{background:#eee;padding:1rem;white-space:pre-wrap}
 <li>Use Chrome ou Edge no computador (não funciona em celular nem em Firefox).</li>
 <li>Plugue a placa por um cabo USB de dados. Não ligue nada no pino 36 (VP). A própria página grava na placa o programa do experimento.</li>
 <li>Marque a caixa abaixo e clique em Concordar e continuar. Na etapa seguinte, grave a placa e depois clique em Coletar e escolha a porta da placa.</li>
-<li>Aguarde (alguns minutos) e permita downloads múltiplos se o navegador pedir. Não feche a aba.</li>
-<li>Repita a coleta em 3 momentos: logo depois de ligar a placa, cerca de 1 hora depois, e à noite. Deixe o computador sem entrar em repouso.</li>
+<li>Aguarde cerca de 10 a 15 minutos por coleta e permita downloads múltiplos se o navegador pedir. Não feche a aba.</li>
+<li>Repita a coleta em 3 momentos: logo depois de ligar a placa, cerca de 1 hora depois, e à noite. Durante cada coleta o computador não pode entrar em repouso ou hibernação. Entre uma coleta e outra ele pode descansar, mas mantenha a placa ligada (de preferência em um carregador USB comum).</li>
 </ol>
 <h2>O que é enviado</h2>
 <p>Leituras brutas dos sensores internos do chip, o modelo, a temperatura e o horário da coleta. A identificação da placa é guardada apenas como um código embaralhado (o endereço real da placa não é enviado). Nenhum dado pessoal e nenhuma informação do computador utilizado é coletada. Os dados serão usados na análise de pesquisa. A participação é voluntária e você pode parar a qualquer momento.</p>
@@ -45,13 +45,14 @@ pre{background:#eee;padding:1rem;white-space:pre-wrap}
 </esp-web-install-button></p>
 <p><small>Se a sua placa não aparecer na lista, o computador pode precisar do driver do chip USB (CP2102 ou CH340, está escrito na placa). A janela que abrir mostra os links de download, em inglês: "Windows" e "Mac" indicam o seu sistema, e depois de instalar basta clicar em "Try Again". Se a janela disser "No port selected", é porque nenhuma porta foi escolhida.</small></p>
 <h2>Passo 2: coletar</h2>
-<p>Com a placa gravada, clique em Coletar e escolha a porta da placa. Aguarde as 4 amostras.</p>
+<p>Com a placa gravada, clique em Coletar e escolha a porta da placa. A coleta das 4 amostras leva cerca de 10 a 15 minutos e é normal parecer parada por vários minutos. Não feche a aba, não desligue o computador e não deixe ele entrar em suspensão ou hibernação enquanto a coleta não terminar. Se a placa não for reconhecida, tente outra porta USB (algumas placas só funcionam em portas USB 3.0).</p>
+<p id="status"></p>
 <p><button id="go">Coletar</button></p>
 <pre id="log"></pre>
 </section>
 
 <script>
-const UPLOAD_URL = "https://script.google.com/macros/s/AKfycbwkJOzJhvJun7icnf_VKVrpGuKLroppogilCF3HWUzK_r-uBKXUMw0pf9aQOe3fvSuG/exec"; // URL do Apps Script (receptor_drive.gs); vazio = so baixa os arquivos
+const UPLOAD_URL = "https://script.google.com/macros/s/AKfycbxjHD2KDqEwmM_scxuyJ6JRNOp-cqOZ_6rF-aTXB38kQaYR541T_RWp_HaJ1jkBzPa8/exec"; // URL do Apps Script (receptor_drive.gs); vazio = so baixa os arquivos
 const AMOSTRAS = 4;    // amostras de 128 KiB por canal em cada sessao
 const $ = id => document.getElementById(id);
 const log = m => { $('log').textContent += m + "\n"; };
@@ -76,7 +77,7 @@ $('go').onclick = async () => {
   let port, w, rd;
   try {
     port = await navigator.serial.requestPort();
-    await port.open({ baudRate: 921600 });
+    await port.open({ baudRate: 460800 });
     const enc = new TextEncoder();
     w = port.writable.getWriter();
     rd = port.readable.pipeThrough(new TextDecoderStream()).getReader();
@@ -93,13 +94,14 @@ $('go').onclick = async () => {
         buf = buf.slice(i + 1);
         if (l.endsWith('READY') && !sent) { sent = true; await w.write(enc.encode('S\n')); log('Amostra ' + (lidas.length + 1) + ' de ' + AMOSTRAS + '...'); }
         else if (l.startsWith('META ')) meta = JSON.parse(l.slice(5));
-        else if (l.startsWith('CH ')) { const [, n, b] = l.split(' '); ch = chans[n] = { bytes: +b, hex: '', sha: null }; }
+        else if (l.startsWith('CH ')) { const [, n, b] = l.split(' '); ch = chans[n] = { bytes: +b, hex: '', sha: null }; $('status').textContent = 'Amostra ' + (lidas.length + 1) + ' de ' + AMOSTRAS + ': recebendo o canal ' + n + ' (' + Object.keys(chans).length + ' de 6)...'; }
         else if (l.startsWith('SHA ') && ch) { ch.sha = l.slice(4); ch = null; }
-        else if (l === 'END') { lidas.push({ meta, chans }); meta = null; chans = {}; ch = null; sent = false; }
+        else if (l === 'END') { lidas.push({ meta, chans }); meta = null; chans = {}; ch = null; sent = false; if (lidas.length >= AMOSTRAS) break; }
         else if (ch && /^[0-9a-f]+$/.test(l)) ch.hex += l;
       }
     }
     clearTimeout(dog);
+    $('status').textContent = '';
 
     const id = (await sha(enc.encode(lidas[0].meta.mac))).slice(0, 12);
     const agora = new Date();
