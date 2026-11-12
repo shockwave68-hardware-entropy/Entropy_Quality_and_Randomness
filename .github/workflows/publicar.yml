@@ -1,3 +1,4 @@
+# Escrito com auxilio de IA (Claude, da Anthropic), a partir da ideia e dos requisitos do organizador do experimento, que revisou e adotou o resultado.
 name: Compilar e publicar
 
 on:
@@ -32,30 +33,48 @@ jobs:
       - name: Compilar o firmware
         run: |
           arduino-cli compile --fqbn esp32:esp32:esp32 --output-dir build firmware/ENTROPYCOLLECT_ESP32
-          ls -l build
+          arduino-cli compile --fqbn esp32:esp32:esp32 --output-dir build_engage firmware/ENGAGE_ESP32
+          ls -l build build_engage
 
       - name: Montar o site
         run: |
-          mkdir -p public
+          mkdir -p public/engage
           cp -r site/* public/
-          MERGED=$(find build -name '*.merged.bin' | head -n1)
-          if [ -n "$MERGED" ]; then
-            cp "$MERGED" public/firmware.bin
-          else
-            echo "merged.bin nao encontrado; montando com esptool"
-            pip install esptool==4.8.1
-            BOOT=$(find "$HOME/.arduino15" -name boot_app0.bin | head -n1)
-            python -m esptool --chip esp32 merge_bin -o public/firmware.bin \
-              --flash_mode dio --flash_freq 40m --flash_size 4MB \
-              0x1000 build/ENTROPYCOLLECT_ESP32.ino.bootloader.bin \
-              0x8000 build/ENTROPYCOLLECT_ESP32.ino.partitions.bin \
-              0xe000 "$BOOT" \
-              0x10000 build/ENTROPYCOLLECT_ESP32.ino.bin
-          fi
-          ls -l public
+          pip install esptool==4.8.1
+          BOOT=$(find "$HOME/.arduino15" -name boot_app0.bin | head -n1)
+          # junta bootloader + particoes + aplicativo em uma imagem unica
+          montar() {  # $1 pasta de build, $2 nome do sketch, $3 arquivo de saida
+            MERGED=$(find "$1" -name '*.merged.bin' | head -n1)
+            if [ -n "$MERGED" ]; then
+              cp "$MERGED" "$3"
+            else
+              python -m esptool --chip esp32 merge_bin -o "$3" \
+                --flash_mode dio --flash_freq 40m --flash_size 4MB \
+                0x1000 "$1/$2.ino.bootloader.bin" \
+                0x8000 "$1/$2.ino.partitions.bin" \
+                0xe000 "$BOOT" \
+                0x10000 "$1/$2.ino.bin"
+            fi
+          }
+          montar build ENTROPYCOLLECT_ESP32 public/firmware.bin
+          montar build_engage ENGAGE_ESP32 public/engage/firmware.bin
+          ls -l public public/engage
           cat > public/manifest.json <<'JSON'
           {
             "name": "Coletor de entropia ESP32",
+            "version": "1",
+            "new_install_prompt_erase": false,
+            "builds": [
+              {
+                "chipFamily": "ESP32",
+                "parts": [ { "path": "firmware.bin", "offset": 0 } ]
+              }
+            ]
+          }
+          JSON
+          cat > public/engage/manifest.json <<'JSON'
+          {
+            "name": "Teste do Engage ESP32",
             "version": "1",
             "new_install_prompt_erase": false,
             "builds": [
